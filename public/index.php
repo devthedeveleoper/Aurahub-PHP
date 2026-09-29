@@ -5,10 +5,19 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/bootstrap.php'; // Keep bootstrap for now until fully decoupled
 
-// Simple Autoloader
+// Simple Autoloader (Case-sensitive Linux fix)
 spl_autoload_register(function ($class) {
     $root = dirname(__DIR__);
-    $file = $root . '/' . str_replace('\\', '/', $class) . '.php';
+    $path = str_replace('\\', '/', $class);
+    
+    // Map namespaces to exact folder names for Linux compatibility
+    if (strpos($path, 'Core/') === 0) {
+        $path = 'core/' . substr($path, 5);
+    } elseif (strpos($path, 'App/') === 0) {
+        $path = 'app/' . substr($path, 4);
+    }
+    
+    $file = $root . '/' . $path . '.php';
     if (is_readable($file)) {
         require $file;
     }
