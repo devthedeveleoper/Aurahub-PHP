@@ -19,3 +19,7 @@ RUN chown -R www-data:www-data /var/www/html/aurahub
 
 # Expose port 80 for Render's routing
 EXPOSE 80
+
+# Add a quick redirect at the root of the server
+# So when Render pings the base URL or users visit it, they get forwarded to your app!
+RUN echo "<?php header('Location: /aurahub/'); exit; ?>" > /var/www/html/index.php
