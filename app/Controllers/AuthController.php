@@ -43,7 +43,7 @@ class AuthController extends Controller {
             
             if (!preg_match('/^[A-Za-z0-9_]{3,30}$/', $f['username'])) {
                 $err = 'Username must be 3–30 letters, numbers or underscores.';
-            } elseif (!filter_var($f['email'], FILTER_VALIDATE_EMAIL)) {
+            } elseif ($f['email'] !== '' && !filter_var($f['email'], FILTER_VALIDATE_EMAIL)) {
                 $err = 'Enter a valid email address.';
             } elseif (strlen($pass) < 8) {
                 $err = 'Password must be at least 8 characters.';

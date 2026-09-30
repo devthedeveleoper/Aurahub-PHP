@@ -13,10 +13,11 @@
     <label>Reason
       <select name="reason" required>
         <option value="" selected disabled>Choose a reason</option>
-        <option value="spam">Spam</option>
-        <option value="harassment">Harassment</option>
-        <option value="copyright">Copyright concern</option>
-        <option value="misleading">Misleading content</option>
+        <option value="csam">Child Exploitation Material</option>
+        <option value="terrorism">Terrorism Recruitment</option>
+        <option value="doxxing">Doxxing (Private Info)</option>
+        <option value="violence">Threats of Real-World Violence</option>
+        <option value="illegal">Other Illegal Content</option>
         <option value="other">Other</option>
       </select>
     </label>

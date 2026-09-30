@@ -98,7 +98,7 @@ class PlaylistModel extends Model {
         $items = static::db()->prepare("SELECT v.id, v.title, v.thumbnail_url, v.views, v.created_at, u.username, pv.added_at
                                         FROM playlist_videos pv JOIN videos v ON v.id = pv.video_id JOIN users u ON u.id = v.user_id
                                         WHERE pv.playlist_id = ? AND v.status = 'ready'
-                                        ORDER BY pv.position ASC, pv.added_at DESC, pv.video_id ASC LIMIT $limit OFFSET $offset");
+                                        ORDER BY pv.position ASC, pv.added_at DESC, pv.video_id ASC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
         $items->execute([$playlistId]);
         return $items->fetchAll();
     }

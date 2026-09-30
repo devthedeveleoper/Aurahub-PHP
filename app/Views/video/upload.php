@@ -12,6 +12,22 @@
     <label><input type="radio" name="mode" value="remote" checked><span>From a link</span></label>
   </div>
   <label>Title <input name="title" required maxlength="150"></label>
+  <label>Category 
+    <select name="category_id">
+      <option value="">None</option>
+      <?php foreach ($categories as $cat): ?>
+        <option value="<?= $cat['id'] ?>"><?= e($cat['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+  <label>Visibility
+    <select name="visibility">
+      <option value="public" selected>Public (Anyone can watch)</option>
+      <option value="unlisted">Unlisted (Anyone with the link)</option>
+      <option value="private">Private (Only you)</option>
+      <option value="subscribers">Subscribers Only</option>
+    </select>
+  </label>
   <label>Description <textarea name="description" rows="4"></textarea></label>
   <label id="f-file">Video file <input type="file" name="video" accept="video/*" required data-max-bytes="<?= MAX_VIDEO_MB * 1048576 ?>"></label>
   <label id="f-remote" hidden>Direct video URL
@@ -75,7 +91,9 @@ form.addEventListener('submit', (ev) => {
         finish.append('csrf', form.querySelector('[name=csrf]').value);
         finish.append('action', 'complete_remote_import');
         finish.append('title', form.elements.namedItem('title').value);
+        finish.append('category_id', form.elements.namedItem('category_id').value);
         finish.append('description', form.elements.namedItem('description').value);
+        finish.append('visibility', form.elements.namedItem('visibility').value);
         finish.append('remote_id', remoteId);
         const thumbnail = form.elements.namedItem('thumbnail').files[0];
         if (thumbnail) finish.append('thumbnail', thumbnail);
@@ -116,7 +134,9 @@ form.addEventListener('submit', (ev) => {
       finish.append('csrf', form.querySelector('[name=csrf]').value);
       finish.append('action', 'complete_direct_upload');
       finish.append('title', form.elements.namedItem('title').value);
+      finish.append('category_id', form.elements.namedItem('category_id').value);
       finish.append('description', form.elements.namedItem('description').value);
+      finish.append('visibility', form.elements.namedItem('visibility').value);
       finish.append('upload_response', direct.responseText);
       const thumbnail = form.elements.namedItem('thumbnail').files[0];
       if (thumbnail) finish.append('thumbnail', thumbnail);

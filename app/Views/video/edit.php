@@ -5,6 +5,22 @@
   <?= csrf_field() ?>
   <input type="hidden" name="id" value="<?= (int)$id ?>">
   <label>Title <input name="title" required maxlength="150" value="<?= e($title) ?>"></label>
+  <label>Category
+    <select name="category_id">
+      <option value="">None</option>
+      <?php foreach ($categories as $cat): ?>
+        <option value="<?= $cat['id'] ?>" <?= (int)($video['category_id'] ?? 0) === (int)$cat['id'] ? 'selected' : '' ?>><?= e($cat['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+  <label>Visibility
+    <select name="visibility">
+      <option value="public" <?= ($video['visibility'] ?? 'public') === 'public' ? 'selected' : '' ?>>Public (Anyone can watch)</option>
+      <option value="unlisted" <?= ($video['visibility'] ?? 'public') === 'unlisted' ? 'selected' : '' ?>>Unlisted (Anyone with the link)</option>
+      <option value="private" <?= ($video['visibility'] ?? 'public') === 'private' ? 'selected' : '' ?>>Private (Only you)</option>
+      <option value="subscribers" <?= ($video['visibility'] ?? 'public') === 'subscribers' ? 'selected' : '' ?>>Subscribers Only</option>
+    </select>
+  </label>
   <label>Description <textarea name="description" rows="5" maxlength="10000"><?= e($description) ?></textarea></label>
   <?php if ($video['thumbnail_url']): ?>
   <div class="thumb" style="max-width: 320px; margin-bottom: 1rem"><img src="<?= e($video['thumbnail_url']) ?>" alt="Current thumbnail"></div>

@@ -47,6 +47,11 @@ class Router {
         
         // Handle 404
         http_response_code(404);
-        echo "404 Not Found";
+        $file = __DIR__ . '/../app/Views/errors/404.php';
+        if (is_readable($file)) {
+            require $file;
+        } else {
+            echo '404 Not Found';
+        }
     }
 }

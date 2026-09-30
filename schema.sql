@@ -1,13 +1,23 @@
 CREATE TABLE users (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   username      VARCHAR(30)  NOT NULL UNIQUE,
-  email         VARCHAR(191) NOT NULL UNIQUE,
+  email         VARCHAR(191) NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role          ENUM('user','admin') NOT NULL DEFAULT 'user',
   account_status ENUM('active','suspended') NOT NULL DEFAULT 'active',
   bio           VARCHAR(1000) NOT NULL DEFAULT '',
+  avatar_url    VARCHAR(500) NULL,
+  keep_history  TINYINT(1) NOT NULL DEFAULT 0,
+  pinned_video_id INT UNSIGNED NULL,
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+CREATE TABLE categories (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+INSERT INTO categories (name) VALUES ('Gaming'), ('Music'), ('Education'), ('Entertainment'), ('Technology'), ('Sports');
 
 CREATE TABLE videos (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -16,15 +26,20 @@ CREATE TABLE videos (
   description   TEXT NULL,
   stream_id     VARCHAR(64)  NULL,              -- hosted file id (NULL while a remote upload is processing)
   status        ENUM('processing','ready','failed') NOT NULL DEFAULT 'ready',
+  visibility    ENUM('public','unlisted','private','subscribers') NOT NULL DEFAULT 'public',
   remote_id     VARCHAR(64)  NULL,              -- remote upload id while processing
   status_msg    VARCHAR(255) NULL,
   checked_at    TIMESTAMP    NULL,
   thumbnail_url VARCHAR(500) NULL,              -- Freeimage.host URL
+  category_id   INT UNSIGNED NULL,
   views         INT UNSIGNED NOT NULL DEFAULT 0,
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_created (created_at),
   KEY idx_user (user_id),
-  CONSTRAINT fk_v_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  KEY idx_views (views DESC),
+  KEY idx_category (category_id),
+  CONSTRAINT fk_v_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_v_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE video_reports (
@@ -32,7 +47,7 @@ CREATE TABLE video_reports (
   reporter_id INT UNSIGNED NOT NULL,
   video_id    INT UNSIGNED NULL,
   video_title VARCHAR(150) NOT NULL,
-  reason      ENUM('spam','harassment','copyright','misleading','other') NOT NULL,
+  reason      ENUM('csam','terrorism','doxxing','violence','illegal','other') NOT NULL,
   details     VARCHAR(1000) NOT NULL DEFAULT '',
   moderator_note VARCHAR(1000) NOT NULL DEFAULT '',
   status      ENUM('pending','resolved','dismissed') NOT NULL DEFAULT 'pending',
@@ -99,11 +114,13 @@ CREATE TABLE comments (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id    INT UNSIGNED NOT NULL,
   video_id   INT UNSIGNED NOT NULL,
+  parent_id  INT UNSIGNED NULL,
   body       VARCHAR(1000) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_video (video_id, created_at),
   CONSTRAINT fk_c_user  FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE,
-  CONSTRAINT fk_c_video FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+  CONSTRAINT fk_c_video FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+  CONSTRAINT fk_c_parent FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE comment_likes (
@@ -115,3 +132,60 @@ CREATE TABLE comment_likes (
   CONSTRAINT fk_cl_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_cl_comment FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+CREATE TABLE subscriptions (
+  subscriber_id INT UNSIGNED NOT NULL,
+  creator_id INT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (subscriber_id, creator_id),
+  CONSTRAINT fk_sub_subscriber FOREIGN KEY (subscriber_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sub_creator FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE communities (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description VARCHAR(1000) NOT NULL DEFAULT '',
+  creator_id INT UNSIGNED NOT NULL,
+  visibility ENUM('public','private') NOT NULL DEFAULT 'public',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_comm_creator FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE community_members (
+  community_id INT UNSIGNED NOT NULL,
+  user_id INT UNSIGNED NOT NULL,
+  role ENUM('member','admin') NOT NULL DEFAULT 'member',
+  joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (community_id, user_id),
+  CONSTRAINT fk_cm_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE community_posts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  community_id INT UNSIGNED NOT NULL,
+  user_id INT UNSIGNED NOT NULL,
+  video_id INT UNSIGNED NULL,
+  body VARCHAR(2000) NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cp_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cp_video FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE direct_messages (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  sender_id INT UNSIGNED NOT NULL,
+  recipient_id INT UNSIGNED NOT NULL,
+  video_id INT UNSIGNED NULL,
+  body VARCHAR(2000) NOT NULL DEFAULT '',
+  read_at TIMESTAMP NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_dm_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_dm_recipient FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_dm_video FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE SET NULL,
+  KEY idx_dm_thread (sender_id, recipient_id, created_at)
+) ENGINE=InnoDB;
+
+ALTER TABLE users ADD CONSTRAINT fk_user_pinned FOREIGN KEY (pinned_video_id) REFERENCES videos(id) ON DELETE SET NULL;

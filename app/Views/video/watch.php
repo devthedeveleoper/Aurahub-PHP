@@ -56,7 +56,14 @@
     <?php endif; endif; ?>
     <h1><?= e($v['title']) ?></h1>
     <div class="row">
-      <p class="muted"><a href="/aurahub/public/channel?u=<?= rawurlencode($v['username']) ?>"><?= e($v['username']) ?></a> · <?= number_format($v['views']) ?> views · <?= e(time_ago($v['created_at'])) ?></p>
+      <p class="muted">
+        <a href="/aurahub/public/channel?u=<?= rawurlencode($v['username']) ?>"><?= e($v['username']) ?></a> 
+        · <?= number_format($v['views']) ?> views 
+        · <?= e(time_ago($v['created_at'])) ?>
+        <?php if (!empty($v['category_name'])): ?>
+          · Category: <a href="/aurahub/public/?category=<?= (int)$v['category_id'] ?>"><?= e($v['category_name']) ?></a>
+        <?php endif; ?>
+      </p>
       <div class="actions">
         <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="like">
           <button class="pill <?= $liked ? 'on' : '' ?>" <?= $me ? '' : 'disabled title="Log in to like"' ?>><?= $liked ? 'Liked' : 'Like' ?> · <?= $likes ?></button>
@@ -93,8 +100,8 @@
 
     <div id="comments">
       <div style="display: flex; justify-content: space-between; align-items: baseline;">
-        <h2 class="section"><?= count($comments) ?> comment<?= count($comments) === 1 ? '' : 's' ?></h2>
-        <?php if ($comments): ?>
+        <h2 class="section"><?= $totalComments ?> comment<?= $totalComments === 1 ? '' : 's' ?></h2>
+        <?php if ($totalComments > 0): ?>
         <form method="get" action="/aurahub/public/watch">
           <input type="hidden" name="id" value="<?= (int)$id ?>">
           <select name="sort" onchange="this.form.submit()" aria-label="Sort comments" style="border:none; background:transparent; font:inherit; color:inherit; cursor:pointer;">
@@ -111,36 +118,85 @@
         <button class="btn" type="submit">Post</button>
       </form>
       <?php else: ?><p class="muted"><a href="/aurahub/public/login">Log in</a> to comment.</p><?php endif; ?>
-      <?php foreach ($comments as $c): ?>
-        <div class="comment">
-          <p><strong><a href="/aurahub/public/channel?u=<?= rawurlencode($c['username']) ?>"><?= e($c['username']) ?></a></strong> <span class="muted"><?= e(time_ago($c['created_at'])) ?></span></p>
-          <p><?= nl2br(e($c['body'])) ?></p>
-          <form method="post" class="comment-like-form">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="comment_like">
-            <input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
-            <?php if ($me): ?>
-            <button class="link <?= $c['liked_by_me'] ? 'comment-liked' : '' ?>" type="submit"><?= $c['liked_by_me'] ? 'Liked' : 'Like' ?> · <?= (int)$c['like_count'] ?></button>
-            <?php else: ?><span class="muted">Likes <?= (int)$c['like_count'] ?></span><?php endif; ?>
-          </form>
-          <?php if ($me && (int)$me['id'] === (int)$c['user_id']): ?>
-          <details class="comment-edit">
-            <summary>Edit comment</summary>
-            <form method="post" class="cform">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="edit_comment">
-              <input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
-              <textarea name="body" rows="2" maxlength="1000" required><?= e($c['body']) ?></textarea>
-              <button class="pill" type="submit">Save</button>
+
+      
+      <?php
+      // Helper function to render a single comment block
+      $renderComment = function($c, $isReply = false) use ($me, $v, $commentReplies) {
+      ?>
+        <div class="comment" style="display: flex; gap: 1rem; margin-bottom: <?= $isReply ? '1rem' : '1.5rem' ?>; <?= $isReply ? 'margin-left: 3rem;' : '' ?>">
+          <div style="flex-shrink: 0;">
+            <a href="/aurahub/public/channel?u=<?= rawurlencode($c['username']) ?>">
+              <?php if (!empty($c['avatar_url'])): ?>
+                <img src="<?= e($c['avatar_url']) ?>" alt="" style="width: <?= $isReply ? '30px' : '40px' ?>; height: <?= $isReply ? '30px' : '40px' ?>; border-radius: 50%; object-fit: cover;">
+              <?php else: ?>
+                <div style="width: <?= $isReply ? '30px' : '40px' ?>; height: <?= $isReply ? '30px' : '40px' ?>; border-radius: 50%; background: var(--bg-alt); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: <?= $isReply ? '0.9rem' : '1.2rem' ?>;">
+                  <?= e(mb_strtoupper(mb_substr($c['username'], 0, 1))) ?>
+                </div>
+              <?php endif; ?>
+            </a>
+          </div>
+          <div style="flex-grow: 1;">
+            <p style="margin-top: 0; margin-bottom: 0.5rem;"><strong><a href="/aurahub/public/channel?u=<?= rawurlencode($c['username']) ?>"><?= e($c['username']) ?></a></strong> <span class="muted"><?= e(time_ago($c['created_at'])) ?></span></p>
+            <p style="margin-top: 0;"><?= nl2br(e($c['body'])) ?></p>
+            
+            <div style="display: flex; gap: 1rem; align-items: baseline;">
+              <form method="post" class="comment-like-form" style="display: inline;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="comment_like">
+                <input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
+                <?php if ($me): ?>
+                <button class="link <?= $c['liked_by_me'] ? 'comment-liked' : '' ?>" type="submit"><?= $c['liked_by_me'] ? 'Liked' : 'Like' ?> · <?= (int)$c['like_count'] ?></button>
+                <?php else: ?><span class="muted">Likes <?= (int)$c['like_count'] ?></span><?php endif; ?>
+              </form>
+              
+              <?php if ($me && !$isReply): ?>
+              <details class="comment-reply">
+                <summary class="link">Reply</summary>
+                <form method="post" class="cform" style="margin-top: 0.5rem;">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="action" value="comment">
+                  <input type="hidden" name="parent_id" value="<?= (int)$c['id'] ?>">
+                  <textarea name="body" rows="2" maxlength="1000" placeholder="Write a reply..." required></textarea>
+                  <button class="pill" type="submit">Post reply</button>
+                </form>
+              </details>
+              <?php endif; ?>
+            </div>
+
+            <?php if ($me && (int)$me['id'] === (int)$c['user_id']): ?>
+            <details class="comment-edit" style="margin-top: 0.5rem;">
+              <summary>Edit comment</summary>
+              <form method="post" class="cform">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="edit_comment">
+                <input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
+                <textarea name="body" rows="2" maxlength="1000" required><?= e($c['body']) ?></textarea>
+                <button class="pill" type="submit">Save</button>
+              </form>
+            </details>
+            <?php endif; ?>
+            
+            <?php if ($me && ((int)$me['id'] === (int)$c['user_id'] || (int)$me['id'] === (int)$v['user_id'])): ?>
+            <form method="post" style="margin-top: 0.5rem;"><?= csrf_field() ?><input type="hidden" name="action" value="delete_comment"><input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
+              <button class="link">Delete</button>
             </form>
-          </details>
-          <?php endif; ?>
-          <?php if ($me && ((int)$me['id'] === (int)$c['user_id'] || (int)$me['id'] === (int)$v['user_id'])): ?>
-          <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="delete_comment"><input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
-            <button class="link">Delete</button></form>
-          <?php endif; ?>
+            <?php endif; ?>
+          </div>
         </div>
-      <?php endforeach; ?>
+      <?php
+      };
+      
+      foreach ($commentParents as $c): 
+        $renderComment($c, false);
+        if (!empty($commentReplies[$c['id']])) {
+          foreach ($commentReplies[$c['id']] as $r) {
+            $renderComment($r, true);
+          }
+        }
+      endforeach; 
+      ?>
+
     </div>
   </section>
 

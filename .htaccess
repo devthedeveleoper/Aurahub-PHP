@@ -1,4 +1,10 @@
 Options -Indexes
-<FilesMatch "^(config\.php|.*\.sql)$">
+<FilesMatch "^(config\.php|\.env|.*\.sql)$">
   Require all denied
 </FilesMatch>
+
+# Block direct access to includes
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^inc/ - [F,L]
+</IfModule>

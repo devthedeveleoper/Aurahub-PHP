@@ -17,6 +17,8 @@ class UploadController extends Controller {
                 csrf_check();
                 $title = trim($_POST['title'] ?? '');
                 $desc = trim($_POST['description'] ?? '');
+                $categoryId = (int)($_POST['category_id'] ?? 0);
+                if ($categoryId === 0) $categoryId = null;
                 if ($title === '' || mb_strlen($title) > 150) throw new RuntimeException('Title is required (max 150 characters).');
                 if (!$currentUser) throw new RuntimeException('Please log in again.');
 
@@ -48,12 +50,17 @@ class UploadController extends Controller {
                 if ($tf && $tf['error'] === UPLOAD_ERR_OK)
                     $thumbUrl = freeimage_upload($tf['tmp_name'], $tf['name'], $tmime);
                 
+                $visibility = $_POST['visibility'] ?? 'public';
+                if (!in_array($visibility, ['public', 'unlisted', 'private', 'subscribers'], true)) {
+                    $visibility = 'public';
+                }
+
                 $videoModel = new \App\Models\VideoModel();
                 if ($fileId) {
                     $thumbUrl ??= wrapper_thumbnail($fileId);
-                    $newId = $videoModel->createDirectVideo($currentUser['id'], $title, $desc, $fileId, $thumbUrl);
+                    $newId = $videoModel->createDirectVideo($currentUser['id'], $title, $desc, $fileId, $thumbUrl, $categoryId, $visibility);
                 } else {
-                    $newId = $videoModel->createProcessingVideo($currentUser['id'], $title, $desc, $remoteId, $thumbUrl);
+                    $newId = $videoModel->createProcessingVideo($currentUser['id'], $title, $desc, $remoteId, $thumbUrl, $categoryId, $visibility);
                 }
                 echo json_encode(['ok' => true, 'redirect' => '/aurahub/public/watch?id=' . $newId]);
                 exit;
@@ -71,6 +78,9 @@ class UploadController extends Controller {
             exit;
         }
 
-        $this->view('video/upload');
+        $videoModel = new \App\Models\VideoModel();
+        $categories = $videoModel->getCategories();
+
+        $this->view('video/upload', ['categories' => $categories]);
     }
 }

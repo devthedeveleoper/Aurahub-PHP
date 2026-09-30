@@ -15,7 +15,7 @@ class ReportModel extends Model {
                                             v.id AS video_id, COALESCE(v.title, NULLIF(r.video_title, ''), '[removed video]') AS title
                                      FROM video_reports r LEFT JOIN videos v ON v.id = r.video_id
                                      WHERE r.reporter_id = ?
-                                     ORDER BY r.created_at DESC LIMIT $limit OFFSET $offset");
+                                     ORDER BY r.created_at DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
         $st->execute([$userId]);
         return $st->fetchAll();
     }
@@ -38,26 +38,26 @@ class ReportModel extends Model {
                                          FROM video_reports r JOIN users u ON u.id = r.reporter_id
                                          LEFT JOIN videos v ON v.id = r.video_id LEFT JOIN users owner ON owner.id = v.user_id
                                          WHERE r.status = ?
-                                         ORDER BY r.created_at ASC LIMIT $limit OFFSET $offset");
+                                         ORDER BY r.created_at ASC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
             $st->execute([$statusFilter]);
         } else {
             $st = static::db()->prepare("SELECT r.id, r.status, r.reason, r.details, r.moderator_note, r.created_at,
                                          u.username AS reporter_name, v.id AS video_id, v.title, owner.username AS owner_name
                                          FROM video_reports r JOIN users u ON u.id = r.reporter_id
                                          LEFT JOIN videos v ON v.id = r.video_id LEFT JOIN users owner ON owner.id = v.user_id
-                                         ORDER BY r.created_at ASC LIMIT $limit OFFSET $offset");
+                                         ORDER BY r.created_at ASC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
             $st->execute();
         }
         return $st->fetchAll();
     }
 
     public function resolveReport($reportId, $note, $reviewerId) {
-        return static::db()->prepare("UPDATE video_reports SET status = 'resolved', moderator_note = ?, reviewed_at = CURRENT_TIMESTAMP, reviewer_id = ? WHERE id = ?")
+        return static::db()->prepare("UPDATE video_reports SET status = 'resolved', moderator_note = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?")
             ->execute([$note, $reviewerId, $reportId]);
     }
 
     public function dismissReport($reportId, $note, $reviewerId) {
-        return static::db()->prepare("UPDATE video_reports SET status = 'dismissed', moderator_note = ?, reviewed_at = CURRENT_TIMESTAMP, reviewer_id = ? WHERE id = ?")
+        return static::db()->prepare("UPDATE video_reports SET status = 'dismissed', moderator_note = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?")
             ->execute([$note, $reviewerId, $reportId]);
     }
 
@@ -89,9 +89,21 @@ class ReportModel extends Model {
                 JOIN users reporter ON reporter.id = r.reporter_id
                 $where
                 ORDER BY (r.status = 'pending') DESC, r.created_at DESC
-                LIMIT $limit OFFSET $offset";
+                LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
         $st = static::db()->prepare($sql);
         $st->execute($statusFilter === 'all' ? [] : [$statusFilter]);
+        return $st->fetchAll();
+    }
+
+    public function getTransparencyStats() {
+        $st = static::db()->prepare("
+            SELECT reason, COUNT(*) as count 
+            FROM video_reports 
+            WHERE status = 'resolved' 
+            GROUP BY reason 
+            ORDER BY count DESC
+        ");
+        $st->execute();
         return $st->fetchAll();
     }
 }

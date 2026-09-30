@@ -17,8 +17,26 @@ class VideoController extends Controller {
 
         $me = user();
 
+        // Access Control based on Visibility
+        if ($v['visibility'] === 'private') {
+            if (!$me || (int)$me['id'] !== (int)$v['user_id']) {
+                http_response_code(403);
+                $this->view('video/not_found'); // or a custom 'Access Denied' view
+                return;
+            }
+        } elseif ($v['visibility'] === 'subscribers') {
+            if (!$me || (int)$me['id'] !== (int)$v['user_id']) {
+                $userModel = new \App\Models\UserModel();
+                if (!$me || !$userModel->isSubscribed($me['id'], $v['user_id'])) {
+                    http_response_code(403);
+                    $this->view('video/not_found'); // Ideally a "Subscribers only" view
+                    return;
+                }
+            }
+        }
+
         // Backfill thumbnail if missing
-        if ($_SERVER['REQUEST_METHOD'] === 'GET' && $v['status'] === 'ready' && $v['stream_id'] && !$v['thumbnail_url']) {
+        if ($_SERVER['REQUEST_METHOD'] === 'GET' && $v['status'] === 'ready' && $v['stream_id'] && empty($v['thumbnail_url'])) {
             if ($t = wrapper_thumbnail($v['stream_id'])) {
                 $videoModel->updateThumbnail($id, $t);
                 $v['thumbnail_url'] = $t;
@@ -27,7 +45,7 @@ class VideoController extends Controller {
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             csrf_check();
-            if (!$me) redirect('/aurahub/public/login.php'); // Note: adjust route if login is ported
+            if (!$me) redirect('/aurahub/public/login'); // Note: adjust route if login is ported
             $action = $_POST['action'] ?? '';
 
             $commentModel = new \App\Models\CommentModel();
@@ -40,8 +58,10 @@ class VideoController extends Controller {
                 $playlistModel->addVideoToPlaylist((int)($_POST['playlist_id'] ?? 0), $id);
             } elseif ($action === 'comment') {
                 $body = trim($_POST['body'] ?? '');
+                $parentId = (int)($_POST['parent_id'] ?? 0);
+                if ($parentId === 0) $parentId = null;
                 if ($body !== '' && mb_strlen($body) <= 1000)
-                    $commentModel->addComment($me['id'], $id, $body);
+                    $commentModel->addComment($me['id'], $id, $body, $parentId);
             } elseif ($action === 'edit_comment') {
                 $body = trim($_POST['body'] ?? '');
                 if ($body === '' || mb_strlen($body) > 1000)
@@ -64,7 +84,7 @@ class VideoController extends Controller {
             $videoModel->incrementViewCount($id);
             $_SESSION['seen'][$id] = true; $v['views']++;
         }
-        if ($me && $v['status'] === 'ready') {
+        if ($me && $v['status'] === 'ready' && !empty($me['keep_history'])) {
             $videoModel->saveToHistory($me['id'], $id);
         }
 
@@ -84,7 +104,10 @@ class VideoController extends Controller {
         $commentOrderBy = $sortComments === 'popular' ? 'like_count DESC, c.created_at DESC' : 'c.created_at DESC';
 
         $commentModel = new \App\Models\CommentModel();
-        $comments = $commentModel->getCommentsForVideo($id, $me['id'] ?? null, $sortComments);
+        $commentData = $commentModel->getCommentsForVideo($id, $me['id'] ?? null, $sortComments);
+        $commentParents = $commentData['parents'];
+        $commentReplies = $commentData['replies'];
+        $totalComments = count($commentParents) + array_reduce($commentReplies, fn($c, $a) => $c + count($a), 0);
 
         $related = $videoModel->getRelatedVideos($id, 8);
 
@@ -97,7 +120,9 @@ class VideoController extends Controller {
             'saved' => $saved,
             'myPlaylists' => $myPlaylists,
             'sortComments' => $sortComments,
-            'comments' => $comments,
+            'commentParents' => $commentParents,
+            'commentReplies' => $commentReplies,
+            'totalComments' => $totalComments,
             'related' => $related
         ]);
     }
@@ -124,6 +149,12 @@ class VideoController extends Controller {
             csrf_check();
             $title = trim($_POST['title'] ?? '');
             $description = trim($_POST['description'] ?? '');
+            $categoryId = (int)($_POST['category_id'] ?? 0);
+            if ($categoryId === 0) $categoryId = null;
+            $visibility = $_POST['visibility'] ?? 'public';
+            if (!in_array($visibility, ['public', 'unlisted', 'private', 'subscribers'], true)) {
+                $visibility = 'public';
+            }
 
             if ($title === '' || mb_strlen($title) > 150) {
                 $error = 'Title is required and must be 150 characters or fewer.';
@@ -154,7 +185,7 @@ class VideoController extends Controller {
                         $thumbnailUrl = freeimage_upload($thumbnail['tmp_name'], $thumbnail['name'], $thumbnailMime);
                     }
 
-                    $videoModel->updateVideoDetails($id, $me['id'], $title, $description, $thumbnailUrl);
+                    $videoModel->updateVideoDetails($id, $me['id'], $title, $description, $thumbnailUrl, $categoryId, $visibility);
                     redirect('/aurahub/public/watch?id=' . $id);
                 } catch (\Throwable $ex) {
                     $error = $ex->getMessage();
@@ -162,11 +193,14 @@ class VideoController extends Controller {
             }
         }
 
+        $categories = $videoModel->getCategories();
+
         $this->view('video/edit', [
             'id' => $id,
             'video' => $video,
             'title' => $title,
             'description' => $description,
+            'categories' => $categories,
             'error' => $error
         ]);
     }
@@ -192,7 +226,7 @@ class VideoController extends Controller {
             csrf_check();
             $reason = $_POST['reason'] ?? '';
             $details = trim($_POST['details'] ?? '');
-            $reasons = ['spam', 'harassment', 'copyright', 'misleading', 'other'];
+            $reasons = ['csam', 'terrorism', 'doxxing', 'violence', 'illegal', 'other'];
             if (!in_array($reason, $reasons, true)) {
                 $error = 'Choose a report reason.';
             } elseif (mb_strlen($details) > 1000) {

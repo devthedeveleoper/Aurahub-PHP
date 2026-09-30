@@ -1,10 +1,7 @@
 <?php
 // Set the database credentials and API keys here.
 $config = [
-    'DB_HOST' => 'sql8.freesqldatabase.com',
-    'DB_NAME' => 'sql8837996',
-    'DB_USER' => 'sql8837996',
-    'DB_PASS' => 'XvGhlL8ntc',
+    'DB_URI' => getenv('DATABASE_URL') ?: '',
     'AURA_API_BASE_URL' => 'https://aurahub-api-hono.ashwathama249.workers.dev',
     'AURA_API_KEY' => '',
     'UPLOAD_FOLDER_ID' => 'WOUhdqk7kEc',
@@ -24,24 +21,21 @@ $config = [
 
 
 // ---- Database ----
-define('DB_HOST', $config['DB_HOST']);
-define('DB_NAME', $config['DB_NAME']);
-define('DB_USER', $config['DB_USER']);
-define('DB_PASS', $config['DB_PASS']);
+define('DB_URI', $config['DB_URI'] ?? '');
 
 // ---- Aurahub API wrapper (Cloudflare Worker). Streamtape is never called directly. ----
-define('WRAPPER_BASE_URL',  rtrim($config['AURA_API_BASE_URL'], '/'));
-define('WRAPPER_API_KEY',   $config['AURA_API_KEY']);          // sent as "Authorization: Bearer ..." if set
+define('WRAPPER_BASE_URL', rtrim($config['AURA_API_BASE_URL'], '/'));
+define('WRAPPER_API_KEY', $config['AURA_API_KEY']);          // sent as "Authorization: Bearer ..." if set
 define('WRAPPER_FOLDER_ID', $config['UPLOAD_FOLDER_ID']);      // optional upload folder
 
 // Route paths on the wrapper.
-define('WRAPPER_PATH_UPLOAD',        $config['AURA_PATH_UPLOAD']);
-define('WRAPPER_PATH_UPLOAD_URL',    $config['AURA_PATH_UPLOAD_URL']);
-define('WRAPPER_PATH_REMOTE_ADD',    $config['AURA_PATH_REMOTE_ADD']);
+define('WRAPPER_PATH_UPLOAD', $config['AURA_PATH_UPLOAD']);
+define('WRAPPER_PATH_UPLOAD_URL', $config['AURA_PATH_UPLOAD_URL']);
+define('WRAPPER_PATH_REMOTE_ADD', $config['AURA_PATH_REMOTE_ADD']);
 define('WRAPPER_PATH_REMOTE_STATUS', $config['AURA_PATH_REMOTE_STATUS']);
-define('WRAPPER_PATH_DELETE',        $config['AURA_PATH_DELETE']);
-define('WRAPPER_PATH_THUMBNAIL',     $config['AURA_PATH_THUMBNAIL']);
-define('WRAPPER_UPLOAD_FIELD',       $config['AURA_UPLOAD_FIELD']);
+define('WRAPPER_PATH_DELETE', $config['AURA_PATH_DELETE']);
+define('WRAPPER_PATH_THUMBNAIL', $config['AURA_PATH_THUMBNAIL']);
+define('WRAPPER_UPLOAD_FIELD', $config['AURA_UPLOAD_FIELD']);
 
 // Player URL; {id} is replaced with the stored file id. Playback uses the Streamtape embed link.
 define('PLAYER_URL_TEMPLATE', $config['PLAYER_URL_TEMPLATE']);
@@ -50,5 +44,7 @@ define('PLAYER_URL_TEMPLATE', $config['PLAYER_URL_TEMPLATE']);
 define('FREEIMAGE_API_KEY', $config['FREEIMAGE_API_KEY']);
 
 // ---- Limits ----
-define('MAX_VIDEO_MB', (int)$config['MAX_VIDEO_MB']); // keep <= upload_max_filesize
-define('MAX_IMAGE_MB', (int)$config['MAX_IMAGE_MB']);
+// For Render free tier / Streamtape, max video size relies on the Cloudflare worker limits
+// and Streamtape's own limits (which are generous). PHP limits must also be adjusted in php.ini.
+define('MAX_VIDEO_MB', 2048); // 2GB limit for freedom!
+define('MAX_IMAGE_MB', 10);

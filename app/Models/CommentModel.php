@@ -4,8 +4,8 @@ use Core\Model;
 
 class CommentModel extends Model {
 
-    public function addComment($userId, $videoId, $body) {
-        static::db()->prepare('INSERT INTO comments (user_id, video_id, body) VALUES (?,?,?)')->execute([$userId, $videoId, $body]);
+    public function addComment($userId, $videoId, $body, $parentId = null) {
+        static::db()->prepare('INSERT INTO comments (user_id, video_id, body, parent_id) VALUES (?,?,?,?)')->execute([$userId, $videoId, $body, $parentId]);
     }
 
     public function editComment($commentId, $userId, $videoId, $body) {
@@ -34,13 +34,30 @@ class CommentModel extends Model {
     public function getCommentsForVideo($videoId, $userId, $sort = 'newest') {
         $commentOrderBy = $sort === 'popular' ? 'like_count DESC, c.created_at DESC' : 'c.created_at DESC';
 
-        $cs = static::db()->prepare("SELECT c.id, c.user_id, c.body, c.created_at, u.username,
+        $cs = static::db()->prepare("SELECT c.id, c.parent_id, c.user_id, c.body, c.created_at, u.username, u.avatar_url,
                                     COALESCE(cl.like_count, 0) AS like_count, mine.comment_id AS liked_by_me
                             FROM comments c JOIN users u ON u.id = c.user_id
                             LEFT JOIN (SELECT comment_id, COUNT(*) AS like_count FROM comment_likes GROUP BY comment_id) cl ON cl.comment_id = c.id
                             LEFT JOIN comment_likes mine ON mine.comment_id = c.id AND mine.user_id = ?
-                            WHERE c.video_id = ? ORDER BY $commentOrderBy LIMIT 100");
+                            WHERE c.video_id = ? ORDER BY $commentOrderBy LIMIT 200");
         $cs->execute([$userId ?? 0, $videoId]);
-        return $cs->fetchAll();
+        $all = $cs->fetchAll();
+        
+        $parents = [];
+        $replies = [];
+        foreach ($all as $c) {
+            if ($c['parent_id']) {
+                $replies[$c['parent_id']][] = $c;
+            } else {
+                $parents[] = $c;
+            }
+        }
+        
+        // Sort replies chronologically regardless of parent sort
+        foreach ($replies as &$reps) {
+            usort($reps, fn($a, $b) => $a['created_at'] <=> $b['created_at']);
+        }
+        
+        return ['parents' => $parents, 'replies' => $replies];
     }
 }

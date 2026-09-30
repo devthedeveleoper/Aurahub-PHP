@@ -14,8 +14,16 @@ if (!function_exists('mb_strtoupper'))  { function mb_strtoupper($s) { return st
 function db(): PDO {
     static $pdo = null;
     if (!$pdo) {
+        $dbUri = defined('DB_URI') && DB_URI ? DB_URI : getenv('DATABASE_URL');
+        $parsed = parse_url($dbUri);
+        $host = $parsed['host'] ?? 'localhost';
+        $port = $parsed['port'] ?? 3306;
+        $user = $parsed['user'] ?? 'root';
+        $pass = $parsed['pass'] ?? '';
+        $dbname = ltrim($parsed['path'] ?? '', '/');
+        
         $pdo = new PDO(
-            'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS,
+            'mysql:host=' . $host . ';port=' . $port . ';dbname=' . $dbname . ';charset=utf8mb4', $user, $pass,
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
              PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
              PDO::ATTR_EMULATE_PREPARES => false]
@@ -32,7 +40,7 @@ function user(): ?array {
     if ($u === false) {
         $u = null;
         if (!empty($_SESSION['uid'])) {
-            $s = db()->prepare('SELECT id, username, role, account_status FROM users WHERE id = ?');
+            $s = db()->prepare('SELECT id, username, role, account_status, avatar_url, keep_history FROM users WHERE id = ?');
             $s->execute([$_SESSION['uid']]);
             $u = $s->fetch() ?: null;
             if ($u && $u['account_status'] !== 'active') {
@@ -73,27 +81,43 @@ function time_ago(string $ts): string {
 }
 
 function page_header(string $title = 'Aurahub'): void {
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
     $u = user(); $q = $_GET['q'] ?? '';
     ?><!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($title) ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/aurahub/assets/style.css?v=<?= filemtime(__DIR__ . '/../assets/style.css') ?>">
 </head><body>
 <header class="bar">
-  <a class="brand" href="/aurahub/public/">Aurahub</a>
+  <a class="brand" href="/aurahub/public/">▶ Aurahub</a>
   <form class="search" action="/aurahub/public/" method="get">
     <input type="search" name="q" value="<?= e($q) ?>" placeholder="Search videos" aria-label="Search videos">
   </form>
   <nav>
+    <a href="/aurahub/public/communities">Communities</a>
     <?php if ($u): ?>
       <a class="btn" href="/aurahub/public/upload">Upload</a>
       <div class="dropdown">
-        <span class="who dropbtn" onclick="document.getElementById('navDropdown').classList.toggle('show');"><?= e($u['username']) ?> ▼</span>
+        <span class="who dropbtn" onclick="document.getElementById('navDropdown').classList.toggle('show');">
+          <?php if (!empty($u['avatar_url'])): ?>
+            <img src="<?= e($u['avatar_url']) ?>" alt="" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; pointer-events: none;">
+          <?php else: ?>
+            <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--bg-alt); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.8rem; pointer-events: none;">
+              <?= e(mb_strtoupper(mb_substr($u['username'], 0, 1))) ?>
+            </span>
+          <?php endif; ?>
+          <span style="pointer-events: none;"><?= e($u['username']) ?> ▾</span>
+        </span>
         <div class="dropdown-content" id="navDropdown">
           <a href="/aurahub/public/account">Account</a>
+          <a href="/aurahub/public/subscriptions">Subscriptions</a>
+          <a href="/aurahub/public/messages">Messages</a>
+          <a href="/aurahub/public/communities">Communities</a>
           <a href="/aurahub/public/analytics">Analytics</a>
           <a href="/aurahub/public/playlists">Playlists</a>
           <a href="/aurahub/public/history">History</a>
@@ -117,7 +141,7 @@ function page_header(string $title = 'Aurahub'): void {
 <main>
 <script>
 window.onclick = function(event) {
-  if (!event.target.matches('.dropbtn')) {
+  if (!event.target.closest('.dropbtn')) {
     let dropdowns = document.getElementsByClassName("dropdown-content");
     for (let i = 0; i < dropdowns.length; i++) {
       if (dropdowns[i].classList.contains('show')) dropdowns[i].classList.remove('show');
@@ -127,4 +151,12 @@ window.onclick = function(event) {
 </script>
 <?php
 }
-function page_footer(): void { echo "</main></body></html>"; }
+function page_footer(): void { 
+  echo "</main>
+  <footer style=\"text-align: center; padding: 2rem; margin-top: 2rem; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13px;\">
+    <a href=\"/aurahub/public/policy\" style=\"color: var(--text-secondary);\">Content Policy</a> &middot; 
+    <a href=\"/aurahub/public/transparency\" style=\"color: var(--text-secondary);\">Transparency Report</a> &middot; 
+    &copy; " . date('Y') . " Aurahub
+  </footer>
+  </body></html>"; 
+}

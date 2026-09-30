@@ -28,6 +28,9 @@ $router = new Core\Router();
 
 // Add routes
 $router->add('', ['controller' => 'HomeController', 'action' => 'index']);
+$router->add('subscriptions', ['controller' => 'HomeController', 'action' => 'subscriptions']);
+$router->add('policy', ['controller' => 'HomeController', 'action' => 'policy']);
+$router->add('transparency', ['controller' => 'HomeController', 'action' => 'transparency']);
 $router->add('watch', ['controller' => 'VideoController', 'action' => 'watch']);
 $router->add('upload', ['controller' => 'UploadController', 'action' => 'index']);
 $router->add('edit_video', ['controller' => 'VideoController', 'action' => 'edit']);
@@ -35,10 +38,19 @@ $router->add('report', ['controller' => 'VideoController', 'action' => 'report']
 $router->add('status', ['controller' => 'VideoController', 'action' => 'status']);
 $router->add('playlists', ['controller' => 'PlaylistController', 'action' => 'index']);
 $router->add('playlist', ['controller' => 'PlaylistController', 'action' => 'viewPlaylist']);
+$router->add('communities', ['controller' => 'CommunityController', 'action' => 'index']);
+$router->add('community', ['controller' => 'CommunityController', 'action' => 'viewCommunity']);
+$router->add('community_create', ['controller' => 'CommunityController', 'action' => 'create']);
+$router->add('messages', ['controller' => 'MessageController', 'action' => 'index']);
+$router->add('messages/chat', ['controller' => 'MessageController', 'action' => 'chat']);
+$router->add('api/videos', ['controller' => 'ApiController', 'action' => 'videos']);
+$router->add('api/video', ['controller' => 'ApiController', 'action' => 'video']);
+$router->add('api/channel', ['controller' => 'ApiController', 'action' => 'channel']);
 $router->add('login', ['controller' => 'AuthController', 'action' => 'login']);
 $router->add('register', ['controller' => 'AuthController', 'action' => 'register']);
 $router->add('logout', ['controller' => 'AuthController', 'action' => 'logout']);
 $router->add('account', ['controller' => 'AccountController', 'action' => 'index']);
+$router->add('account/export', ['controller' => 'AccountController', 'action' => 'export']);
 $router->add('history', ['controller' => 'AccountController', 'action' => 'history']);
 $router->add('watch_later', ['controller' => 'AccountController', 'action' => 'watchLater']);
 $router->add('analytics', ['controller' => 'AccountController', 'action' => 'analytics']);

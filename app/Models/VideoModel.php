@@ -4,14 +4,14 @@ use Core\Model;
 
 class VideoModel extends Model {
 
-    public function getFeed($query = '', $creator = '', $sort = 'newest', $limit = 12, $offset = 0) {
+    public function getFeed($query = '', $creator = '', $category = 0, $sort = 'newest', $limit = 12, $offset = 0) {
         $orderBy = match ($sort) {
           'popular' => 'v.views DESC, v.created_at DESC, v.id DESC',
           'oldest' => 'v.created_at ASC, v.id ASC',
           default => 'v.created_at DESC, v.id DESC',
         };
 
-        $where = "WHERE v.status = 'ready'";
+        $where = "WHERE v.status = 'ready' AND v.visibility = 'public'";
         $args = [];
         if ($query !== '') {
             $like = '%' . addcslashes($query, '%_\\') . '%';
@@ -22,13 +22,31 @@ class VideoModel extends Model {
             $where .= ' AND u.username = ?';
             $args[] = $creator;
         }
+        if ($category > 0) {
+            $where .= ' AND v.category_id = ?';
+            $args[] = $category;
+        }
 
         $sql = "SELECT v.id, v.title, v.thumbnail_url, v.views, v.created_at, u.username
                 FROM videos v JOIN users u ON u.id = v.user_id $where
-                ORDER BY $orderBy LIMIT " . ($limit + 1) . " OFFSET $offset";
+                ORDER BY $orderBy LIMIT " . ((int)$limit + 1) . " OFFSET " . (int)$offset;
         
         $st = static::db()->prepare($sql);
         $st->execute($args);
+        return $st->fetchAll();
+    }
+
+    public function getSubscriptionsFeed($userId, $limit = 12, $offset = 0) {
+        $sql = "SELECT v.id, v.title, v.thumbnail_url, v.views, v.created_at, u.username
+                FROM videos v
+                JOIN users u ON u.id = v.user_id
+                JOIN subscriptions s ON s.creator_id = u.id
+                WHERE s.subscriber_id = ? AND v.status = 'ready' AND v.visibility IN ('public', 'subscribers')
+                ORDER BY v.created_at DESC, v.id DESC
+                LIMIT " . ((int)$limit + 1) . " OFFSET " . (int)$offset;
+        
+        $st = static::db()->prepare($sql);
+        $st->execute([$userId]);
         return $st->fetchAll();
     }
 
@@ -50,7 +68,7 @@ class VideoModel extends Model {
         $st = static::db()->prepare("SELECT v.id, v.title, v.thumbnail_url, v.views, v.created_at, u.username, wh.watched_at
                                      FROM watch_history wh JOIN videos v ON v.id = wh.video_id JOIN users u ON u.id = v.user_id
                                      WHERE wh.user_id = ? AND v.status = 'ready'
-                                     ORDER BY wh.watched_at DESC LIMIT $limit OFFSET $offset");
+                                     ORDER BY wh.watched_at DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
         $st->execute([$userId]);
         return $st->fetchAll();
     }
@@ -71,7 +89,7 @@ class VideoModel extends Model {
                                      JOIN videos v ON v.id = wl.video_id
                                      JOIN users u ON u.id = v.user_id
                                      WHERE wl.user_id = ? AND v.status = 'ready'
-                                     ORDER BY wl.saved_at DESC, v.id DESC LIMIT $limit OFFSET $offset");
+                                     ORDER BY wl.saved_at DESC, v.id DESC LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
         $st->execute([$userId]);
         return $st->fetchAll();
     }
@@ -79,15 +97,15 @@ class VideoModel extends Model {
     public function getAnalyticsSummary($userId) {
         $summary = static::db()->prepare("SELECT COUNT(*) AS video_count, COALESCE(SUM(views), 0) AS total_views,
                                           COALESCE(AVG(views), 0) AS average_views
-                                   FROM videos WHERE user_id = ? AND status = 'ready'");
+                                   FROM videos WHERE user_id = ? AND status = 'ready' AND visibility != 'private'");
         $summary->execute([$userId]);
         return $summary->fetch();
     }
 
     public function getAnalyticsVideos($userId, $limit = 100) {
         $st = static::db()->prepare("SELECT id, title, thumbnail_url, views, created_at
-                             FROM videos WHERE user_id = ? AND status = 'ready'
-                             ORDER BY views DESC, created_at DESC, id DESC LIMIT $limit");
+                             FROM videos WHERE user_id = ? AND status = 'ready' AND visibility != 'private'
+                             ORDER BY views DESC, created_at DESC, id DESC LIMIT " . (int)$limit);
         $st->execute([$userId]);
         return $st->fetchAll();
     }
@@ -96,22 +114,26 @@ class VideoModel extends Model {
         return static::db()->prepare('DELETE FROM videos WHERE id = ?')->execute([$videoId]);
     }
 
-    public function createDirectVideo($userId, $title, $description, $fileId, $thumbUrl) {
-        static::db()->prepare("INSERT INTO videos (user_id, title, description, stream_id, status, thumbnail_url) VALUES (?,?,?,?, 'ready', ?)")
-            ->execute([$userId, $title, $description, $fileId, $thumbUrl]);
+    public function createDirectVideo($userId, $title, $description, $fileId, $thumbUrl, $categoryId = null, $visibility = 'public') {
+        static::db()->prepare("INSERT INTO videos (user_id, title, description, stream_id, status, thumbnail_url, category_id, visibility) VALUES (?,?,?,?, 'ready', ?, ?, ?)")
+            ->execute([$userId, $title, $description, $fileId, $thumbUrl, $categoryId, $visibility]);
         return (int)static::db()->lastInsertId();
     }
 
-    public function createProcessingVideo($userId, $title, $description, $remoteId, $thumbUrl) {
-        static::db()->prepare("INSERT INTO videos (user_id, title, description, status, remote_id, thumbnail_url) VALUES (?,?,?, 'processing', ?, ?)")
-            ->execute([$userId, $title, $description, $remoteId, $thumbUrl]);
+    public function createProcessingVideo($userId, $title, $description, $remoteId, $thumbUrl, $categoryId = null, $visibility = 'public') {
+        static::db()->prepare("INSERT INTO videos (user_id, title, description, status, remote_id, thumbnail_url, category_id, visibility) VALUES (?,?,?, 'processing', ?, ?, ?, ?)")
+            ->execute([$userId, $title, $description, $remoteId, $thumbUrl, $categoryId, $visibility]);
         return (int)static::db()->lastInsertId();
     }
 
     public function getVideoById($id) {
-        $st = static::db()->prepare('SELECT v.*, u.username FROM videos v JOIN users u ON u.id = v.user_id WHERE v.id = ?');
+        $st = static::db()->prepare('SELECT v.*, u.username, c.name as category_name FROM videos v JOIN users u ON u.id = v.user_id LEFT JOIN categories c ON c.id = v.category_id WHERE v.id = ?');
         $st->execute([$id]);
         return $st->fetch();
+    }
+
+    public function getCategories() {
+        return static::db()->query('SELECT id, name FROM categories ORDER BY name ASC')->fetchAll();
     }
 
     public function updateThumbnail($videoId, $thumbnailUrl) {
@@ -141,7 +163,9 @@ class VideoModel extends Model {
     }
 
     public function likeCount($videoId) {
-        return (int)static::db()->query('SELECT COUNT(*) FROM likes WHERE video_id = ' . (int)$videoId)->fetchColumn();
+        $st = static::db()->prepare('SELECT COUNT(*) FROM likes WHERE video_id = ?');
+        $st->execute([$videoId]);
+        return (int)$st->fetchColumn();
     }
 
     public function hasLiked($userId, $videoId) {
@@ -158,24 +182,24 @@ class VideoModel extends Model {
 
     public function getRelatedVideos($videoId, $limit = 8) {
         $rs = static::db()->prepare("SELECT v.id, v.title, v.thumbnail_url, v.views, u.username FROM videos v JOIN users u ON u.id = v.user_id
-                             WHERE v.id <> ? AND v.status = 'ready' ORDER BY v.created_at DESC LIMIT $limit");
+                             WHERE v.id <> ? AND v.status = 'ready' AND v.visibility = 'public' ORDER BY v.created_at DESC LIMIT " . (int)$limit);
         $rs->execute([$videoId]);
         return $rs->fetchAll();
     }
 
     public function getVideoForEdit($videoId, $userId) {
-        $st = static::db()->prepare('SELECT id, title, description, thumbnail_url FROM videos WHERE id = ? AND user_id = ?');
+        $st = static::db()->prepare('SELECT id, title, description, thumbnail_url, category_id, visibility FROM videos WHERE id = ? AND user_id = ?');
         $st->execute([$videoId, $userId]);
         return $st->fetch();
     }
 
-    public function updateVideoDetails($videoId, $userId, $title, $description, $thumbnailUrl = null) {
+    public function updateVideoDetails($videoId, $userId, $title, $description, $thumbnailUrl = null, $categoryId = null, $visibility = 'public') {
         if ($thumbnailUrl !== null) {
-            static::db()->prepare('UPDATE videos SET title = ?, description = ?, thumbnail_url = ? WHERE id = ? AND user_id = ?')
-                ->execute([$title, $description, $thumbnailUrl, $videoId, $userId]);
+            static::db()->prepare('UPDATE videos SET title = ?, description = ?, thumbnail_url = ?, category_id = ?, visibility = ? WHERE id = ? AND user_id = ?')
+                ->execute([$title, $description, $thumbnailUrl, $categoryId, $visibility, $videoId, $userId]);
         } else {
-            static::db()->prepare('UPDATE videos SET title = ?, description = ? WHERE id = ? AND user_id = ?')
-                ->execute([$title, $description, $videoId, $userId]);
+            static::db()->prepare('UPDATE videos SET title = ?, description = ?, category_id = ?, visibility = ? WHERE id = ? AND user_id = ?')
+                ->execute([$title, $description, $categoryId, $visibility, $videoId, $userId]);
         }
     }
 
@@ -209,5 +233,23 @@ class VideoModel extends Model {
 
     public function updateVideoCheckedAt($videoId) {
         static::db()->prepare('UPDATE videos SET checked_at = NOW() WHERE id = ?')->execute([$videoId]);
+    }
+
+    public function countVideos($username, $isOwner = false) {
+        $vis = $isOwner ? "" : "AND v.visibility = 'public'";
+        $st = static::db()->prepare("SELECT COUNT(*) FROM videos v JOIN users u ON u.id = v.user_id WHERE u.username = ? AND v.status = 'ready' $vis");
+        $st->execute([$username]);
+        return (int)$st->fetchColumn();
+    }
+
+    public function getRecentVideos($limit, $offset, $username, $isOwner = false) {
+        $vis = $isOwner ? "" : "AND v.visibility = 'public'";
+        $st = static::db()->prepare("SELECT v.id, v.title, v.thumbnail_url, v.views, v.created_at, u.username, v.visibility
+                                     FROM videos v JOIN users u ON u.id = v.user_id
+                                     WHERE u.username = ? AND v.status = 'ready' $vis
+                                     ORDER BY v.created_at DESC, v.id DESC
+                                     LIMIT " . (int)$limit . " OFFSET " . (int)$offset);
+        $st->execute([$username]);
+        return $st->fetchAll();
     }
 }
